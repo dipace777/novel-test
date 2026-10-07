@@ -18,7 +18,7 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "Trace — AI test workspace",
+        title: "Novel Test — AI test workspace",
       },
     ],
     links: [
