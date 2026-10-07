@@ -10,12 +10,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import type { WorkspaceConfig } from "../config"
+import type { ApiConfig } from "../config"
 
 type ApiConfigFieldsProps = {
-  api: WorkspaceConfig["api"]
-  onChange: (api: WorkspaceConfig["api"]) => void
+  api: ApiConfig
+  onChange: (api: ApiConfig) => void
 }
 
 const authOptions = [
@@ -24,8 +23,15 @@ const authOptions = [
   { value: "api-key", label: "API key" },
 ] as const
 
+const redirectOptions = [
+  { value: "default", label: "Use test defaults" },
+  { value: "follow", label: "Follow redirects" },
+  { value: "stop", label: "Do not follow" },
+] as const
+
 export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
-  function update(values: Partial<WorkspaceConfig["api"]>) {
+  const headers = api.headers ?? []
+  function update(values: Partial<ApiConfig>) {
     onChange({ ...api, ...values })
   }
 
@@ -36,10 +42,10 @@ export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
     >
       <div>
         <h3 id="api-config-title" className="text-sm font-medium">
-          API configuration
+          API configuration (optional)
         </h3>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Defaults for requests in this workspace.
+          Optional defaults for API calls in your tests.
         </p>
       </div>
       <div className="space-y-2">
@@ -48,7 +54,7 @@ export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
         </Label>
         <Select
           items={authOptions}
-          value={api.authType}
+          value={api.authType ?? "none"}
           onValueChange={(value) => {
             if (value) update({ authType: value })
           }}
@@ -74,10 +80,9 @@ export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
             id="bearer-token"
             type="password"
             autoComplete="off"
-            value={api.bearerToken}
+            value={api.bearerToken ?? ""}
             onChange={(event) => update({ bearerToken: event.target.value })}
             placeholder="Enter token"
-            required
           />
         </div>
       )}
@@ -89,10 +94,9 @@ export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
             </Label>
             <Input
               id="api-key-name"
-              value={api.apiKeyName}
+              value={api.apiKeyName ?? ""}
               onChange={(event) => update({ apiKeyName: event.target.value })}
               placeholder="X-API-Key"
-              required
             />
           </div>
           <div className="space-y-2">
@@ -103,10 +107,9 @@ export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
               id="api-key-value"
               type="password"
               autoComplete="off"
-              value={api.apiKeyValue}
+              value={api.apiKeyValue ?? ""}
               onChange={(event) => update({ apiKeyValue: event.target.value })}
               placeholder="Enter key"
-              required
             />
           </div>
         </div>
@@ -121,7 +124,7 @@ export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
             onClick={() =>
               update({
                 headers: [
-                  ...api.headers,
+                  ...headers,
                   { id: crypto.randomUUID(), name: "", value: "" },
                 ],
               })
@@ -130,12 +133,12 @@ export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
             <Plus /> Add header
           </Button>
         </div>
-        {api.headers.length === 0 && (
+        {headers.length === 0 && (
           <p className="text-xs text-muted-foreground">
             No custom headers added.
           </p>
         )}
-        {api.headers.map((header, index) => (
+        {headers.map((header, index) => (
           <div key={header.id} className="flex items-center gap-2">
             <div className="grid min-w-0 flex-1 grid-cols-2 gap-2">
               <Input
@@ -144,7 +147,7 @@ export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
                 value={header.name}
                 onChange={(event) =>
                   update({
-                    headers: api.headers.map((item) =>
+                    headers: headers.map((item) =>
                       item.id === header.id
                         ? { ...item, name: event.target.value }
                         : item
@@ -158,7 +161,7 @@ export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
                 value={header.value}
                 onChange={(event) =>
                   update({
-                    headers: api.headers.map((item) =>
+                    headers: headers.map((item) =>
                       item.id === header.id
                         ? { ...item, value: event.target.value }
                         : item
@@ -174,7 +177,7 @@ export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
               aria-label={`Remove header ${index + 1}`}
               onClick={() =>
                 update({
-                  headers: api.headers.filter((item) => item.id !== header.id),
+                  headers: headers.filter((item) => item.id !== header.id),
                 })
               }
             >
@@ -193,17 +196,21 @@ export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
           min={100}
           max={120000}
           step={1}
-          required
-          value={Number.isNaN(api.timeoutMs) ? "" : api.timeoutMs}
+          placeholder="Use test defaults"
+          value={api.timeoutMs ?? ""}
           onChange={(event) =>
-            update({ timeoutMs: event.target.valueAsNumber })
+            update({
+              timeoutMs: Number.isNaN(event.target.valueAsNumber)
+                ? undefined
+                : event.target.valueAsNumber,
+            })
           }
         />
         <p className="text-[11px] text-muted-foreground">
           How long a request can wait for a response.
         </p>
       </div>
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <Label htmlFor="follow-redirects" className="text-xs">
             Follow redirects
@@ -212,11 +219,37 @@ export function ApiConfigFields({ api, onChange }: ApiConfigFieldsProps) {
             Automatically follow HTTP redirects.
           </p>
         </div>
-        <Switch
-          id="follow-redirects"
-          checked={api.followRedirects}
-          onCheckedChange={(checked) => update({ followRedirects: checked })}
-        />
+        <Select
+          items={redirectOptions}
+          value={
+            api.followRedirects === undefined
+              ? "default"
+              : api.followRedirects
+                ? "follow"
+                : "stop"
+          }
+          onValueChange={(value) => {
+            if (value)
+              update({
+                followRedirects:
+                  value === "default" ? undefined : value === "follow",
+              })
+          }}
+        >
+          <SelectTrigger
+            id="follow-redirects"
+            className="w-[170px] shrink-0 text-xs"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            {redirectOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </section>
   )

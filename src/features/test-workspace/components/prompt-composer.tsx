@@ -4,18 +4,18 @@ import type { RefObject } from "react"
 import { Button } from "@/components/ui/button"
 
 type PromptComposerProps = {
+  onBlur: () => void
   prompt: string
   onPromptChange: (prompt: string) => void
   inputRef: RefObject<HTMLTextAreaElement | null>
-  mode: "ui" | "api"
   onOpenSettings: () => void
 }
 
 export function PromptComposer({
+  onBlur,
   prompt,
   onPromptChange,
   inputRef,
-  mode,
   onOpenSettings,
 }: PromptComposerProps) {
   return (
@@ -25,22 +25,18 @@ export function PromptComposer({
           Describe your test
         </label>
         <textarea
+          onBlur={onBlur}
+          maxLength={50000}
           ref={inputRef}
           id="test-prompt"
           value={prompt}
           onChange={(event) => onPromptChange(event.target.value)}
-          placeholder="Describe a flow to test, or ask a question…"
+          placeholder="Describe UI steps, API calls, or both…"
           rows={3}
           className="block max-h-52 min-h-24 w-full resize-y bg-transparent px-4 pt-4 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
         />
         <div className="flex items-center justify-end px-3 pb-3">
           <div className="flex shrink-0 items-center gap-2">
-            <span
-              className="rounded border border-border px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground"
-              title={mode === "ui" ? "Browser testing" : "API testing"}
-            >
-              {mode.toUpperCase()}
-            </span>
             <Button
               type="button"
               variant="ghost"

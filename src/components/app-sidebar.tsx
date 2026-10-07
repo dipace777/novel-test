@@ -4,6 +4,7 @@ import type { ComponentProps } from "react"
 
 import { Button } from "@/components/ui/button"
 import { SearchForm } from "@/components/search-form"
+import { SidebarResizeHandle } from "@/components/resizable-sidebar"
 import {
   Sidebar,
   SidebarContent,
@@ -11,12 +12,15 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { TestCaseList } from "@/features/test-workspace/components/test-case-list"
-import type { TestGroup } from "@/features/test-workspace/data"
+import type { TestCase, TestGroup } from "@/features/test-workspace/data"
 
 type AppSidebarProps = ComponentProps<typeof Sidebar> & {
   onNewTest: () => void
   selectedTestId: string | null
   onSelectTest: (testId: string) => void
+  onDeleteTest: (test: TestCase) => void
+  onEditCategory: (categoryId: string) => void
+  onDeleteCategory: (categoryId: string) => void
   testGroups: TestGroup[]
 }
 
@@ -24,6 +28,9 @@ export function AppSidebar({
   onNewTest,
   selectedTestId,
   onSelectTest,
+  onDeleteTest,
+  onEditCategory,
+  onDeleteCategory,
   testGroups,
   ...props
 }: AppSidebarProps) {
@@ -59,9 +66,13 @@ export function AppSidebar({
           query={search}
           selectedTestId={selectedTestId}
           onSelectTest={onSelectTest}
+          onDeleteTest={onDeleteTest}
+          onEditCategory={onEditCategory}
+          onDeleteCategory={onDeleteCategory}
           testGroups={testGroups}
         />
       </SidebarContent>
+      <SidebarResizeHandle />
     </Sidebar>
   )
 }

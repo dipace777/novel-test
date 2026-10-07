@@ -1,11 +1,9 @@
 import { useState } from "react"
-import { Code2, Monitor } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
-import { validateWorkspaceConfig } from "../config"
+import { normalizeWorkspaceConfig, validateWorkspaceConfig } from "../config"
 import type { WorkspaceConfig } from "../config"
 import type { Workspace } from "../data"
 import { ApiConfigFields } from "./api-config-fields"
@@ -14,18 +12,25 @@ type WorkspaceConfigFormProps = {
   config: WorkspaceConfig
   onCancel: () => void
 } & (
-  | { intent: "edit"; onSave: (config: WorkspaceConfig) => void }
+  | {
+      intent: "edit"
+      onSave: (config: WorkspaceConfig) => Promise<void>
+      onRequestDelete: () => void
+    }
   | {
       intent: "create"
       workspaces: Workspace[]
-      onCreate: (name: string, config: WorkspaceConfig) => void
+      onCreate: (name: string, config: WorkspaceConfig) => Promise<void>
     }
 )
 
 export function WorkspaceConfigForm(props: WorkspaceConfigFormProps) {
   const { config, onCancel } = props
   const [name, setName] = useState("")
-  const [draft, setDraftValue] = useState(config)
+  const [draft, setDraftValue] = useState(() =>
+    normalizeWorkspaceConfig(config)
+  )
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   function setDraft(value: WorkspaceConfig) {
@@ -36,15 +41,13 @@ export function WorkspaceConfigForm(props: WorkspaceConfigFormProps) {
   return (
     <form
       className="flex min-h-0 flex-1 flex-col"
-      onSubmit={(event) => {
+      onSubmit={async (event) => {
         event.preventDefault()
+        if (saving) return
         const normalizedName = name.trim().replace(/\s+/g, " ")
         if (props.intent === "create") {
-          if (!normalizedName) {
-            setError("Enter a workspace name.")
-            return
-          }
           if (
+            normalizedName &&
             props.workspaces.some(
               (workspace) =>
                 workspace.label.toLowerCase() === normalizedName.toLowerCase()
@@ -59,33 +62,35 @@ export function WorkspaceConfigForm(props: WorkspaceConfigFormProps) {
           setError(message)
           return
         }
-        const savedConfig: WorkspaceConfig = {
-          ...draft,
-          globalUrl: draft.globalUrl.trim(),
-          api: {
-            ...draft.api,
-            headers: draft.api.headers
-              .filter((header) => header.name.trim() || header.value)
-              .map((header) => ({ ...header, name: header.name.trim() })),
-          },
+        const savedConfig = normalizeWorkspaceConfig(draft)
+        setSaving(true)
+        setError(null)
+        try {
+          if (props.intent === "create")
+            await props.onCreate(normalizedName, savedConfig)
+          else await props.onSave(savedConfig)
+        } catch (saveError) {
+          setError(
+            saveError instanceof Error
+              ? saveError.message
+              : "Could not save. Try again."
+          )
+        } finally {
+          setSaving(false)
         }
-        if (props.intent === "create")
-          props.onCreate(normalizedName, savedConfig)
-        else props.onSave(savedConfig)
       }}
     >
       <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
         {props.intent === "create" && (
           <div className="space-y-2">
             <Label htmlFor="workspace-name" className="text-xs">
-              Workspace name
+              Workspace name (optional)
             </Label>
             <Input
               id="workspace-name"
               value={name}
               maxLength={64}
-              required
-              placeholder="e.g. Customer portal"
+              placeholder="Defaults to the staging app hostname"
               onChange={(event) => {
                 setName(event.target.value)
                 setError(null)
@@ -100,79 +105,25 @@ export function WorkspaceConfigForm(props: WorkspaceConfigFormProps) {
           <Input
             id="global-url"
             type="url"
+            maxLength={2048}
             required
-            placeholder={
-              draft.mode === "api"
-                ? "https://api.example.com/v1"
-                : "https://app.example.com"
-            }
+            placeholder="https://staging.example.com"
             value={draft.globalUrl}
             onChange={(event) =>
               setDraft({ ...draft, globalUrl: event.target.value })
             }
           />
           <p className="text-[11px] leading-5 text-muted-foreground">
-            {draft.mode === "api"
-              ? "Base URL for API requests in this workspace."
-              : "Starting URL for browser tests in this workspace."}
+            URL of the deployed staging app for browser interactions and API
+            calls.
           </p>
         </div>
-        <div className="rounded-xl border border-border p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <Label htmlFor="api-mode" className="text-xs">
-                Test mode
-              </Label>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                {draft.mode === "api"
-                  ? "Test endpoints and responses."
-                  : "Test user journeys in the browser."}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span
-                className={
-                  draft.mode === "ui" ? "font-medium" : "text-muted-foreground"
-                }
-              >
-                UI
-              </span>
-              <Switch
-                id="api-mode"
-                aria-label="API mode"
-                checked={draft.mode === "api"}
-                onCheckedChange={(checked) =>
-                  setDraft({ ...draft, mode: checked ? "api" : "ui" })
-                }
-              />
-              <span
-                className={
-                  draft.mode === "api" ? "font-medium" : "text-muted-foreground"
-                }
-              >
-                API
-              </span>
-            </div>
-          </div>
-          <div className="mt-4 flex items-center gap-2 border-t border-border pt-3 text-[11px] text-muted-foreground">
-            {draft.mode === "api" ? (
-              <Code2 className="size-3.5" />
-            ) : (
-              <Monitor className="size-3.5" />
-            )}
-            {draft.mode === "api"
-              ? "HTTP requests, status codes, and response data"
-              : "Pages, interactions, and visible results"}
-          </div>
-        </div>
-        {draft.mode === "api" && (
-          <ApiConfigFields
-            api={draft.api}
-            onChange={(api) => setDraft({ ...draft, api })}
-          />
-        )}
+        <ApiConfigFields
+          api={draft.api ?? {}}
+          onChange={(api) => setDraft({ ...draft, api })}
+        />
         <p className="text-[11px] leading-5 text-muted-foreground">
-          Settings apply to all tests in this workspace. Saved for this session.
+          Settings apply to all tests in this workspace.
         </p>
       </div>
       <div className="shrink-0 border-t border-border p-5">
@@ -181,12 +132,32 @@ export function WorkspaceConfigForm(props: WorkspaceConfigFormProps) {
             {error}
           </p>
         )}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onCancel}>
+        <div className="flex flex-wrap justify-end gap-2">
+          {props.intent === "edit" && (
+            <Button
+              type="button"
+              variant="destructive"
+              className="mr-auto bg-destructive text-white hover:bg-destructive/90 dark:bg-destructive dark:hover:bg-destructive/90"
+              disabled={saving}
+              onClick={props.onRequestDelete}
+            >
+              Delete workspace
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            disabled={saving}
+            onClick={onCancel}
+          >
             Cancel
           </Button>
-          <Button type="submit">
-            {props.intent === "create" ? "Create workspace" : "Save settings"}
+          <Button type="submit" disabled={saving}>
+            {saving
+              ? "Saving…"
+              : props.intent === "create"
+                ? "Create workspace"
+                : "Save settings"}
           </Button>
         </div>
       </div>

@@ -14,7 +14,7 @@ type CreateWorkspaceDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   workspaces: Workspace[]
-  onCreate: (name: string, config: WorkspaceConfig) => void
+  onCreate: (name: string, config: WorkspaceConfig) => Promise<void>
 }
 
 export function CreateWorkspaceDrawer({
@@ -38,8 +38,8 @@ export function CreateWorkspaceDrawer({
             config={defaultWorkspaceConfig}
             workspaces={workspaces}
             onCancel={() => onOpenChange(false)}
-            onCreate={(name, config) => {
-              onCreate(name, config)
+            onCreate={async (name, config) => {
+              await onCreate(name, config)
               onOpenChange(false)
             }}
           />

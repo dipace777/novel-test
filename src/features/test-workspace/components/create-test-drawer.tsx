@@ -37,8 +37,8 @@ type CreateTestDrawerProps = {
   groups: TestGroup[]
   initialCategoryId?: string
   chatInputRef: RefObject<HTMLTextAreaElement | null>
-  onCreate: (test: NewTestInput) => void
-  onCreateCategory: (name: string) => string
+  onCreate: (test: NewTestInput) => Promise<void>
+  onCreateCategory: (name: string) => Promise<string>
 }
 
 export function CreateTestDrawer({
@@ -74,9 +74,9 @@ export function CreateTestDrawer({
             initialCategoryId={initialCategoryId}
             onCreateCategory={onCreateCategory}
             onCancel={() => onOpenChange(false)}
-            onCreate={(test) => {
+            onCreate={async (test) => {
+              await onCreate(test)
               created.current = true
-              onCreate(test)
               onOpenChange(false)
             }}
           />
@@ -96,8 +96,8 @@ function CreateTestForm({
   groups: TestGroup[]
   initialCategoryId?: string
   onCancel: () => void
-  onCreate: (test: NewTestInput) => void
-  onCreateCategory: (name: string) => string
+  onCreate: (test: NewTestInput) => Promise<void>
+  onCreateCategory: (name: string) => Promise<string>
 }) {
   const [name, setName] = useState("")
   const [categoryId, setCategoryId] = useState(
@@ -105,6 +105,7 @@ function CreateTestForm({
   )
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const categoryTriggerRef = useRef<HTMLButtonElement>(null)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const options = [
     ...groups.map((group) => ({ value: group.id, label: group.name })),
@@ -115,8 +116,9 @@ function CreateTestForm({
     <>
       <form
         className="flex min-h-0 flex-1 flex-col"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault()
+          if (saving) return
           const testName = name.trim().replace(/\s+/g, " ")
           if (!testName) {
             setError("Enter a test case name.")
@@ -135,10 +137,19 @@ function CreateTestForm({
             setError("A test with this name already exists in this category.")
             return
           }
-          onCreate({
-            name: testName,
-            category: { id: categoryId },
-          })
+          setSaving(true)
+          setError(null)
+          try {
+            await onCreate({ name: testName, category: { id: categoryId } })
+          } catch (saveError) {
+            setError(
+              saveError instanceof Error
+                ? saveError.message
+                : "Could not create test. Try again."
+            )
+          } finally {
+            setSaving(false)
+          }
         }}
       >
         <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
@@ -211,10 +222,17 @@ function CreateTestForm({
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onCancel}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={saving}
+              onClick={onCancel}
+            >
               Cancel
             </Button>
-            <Button type="submit">Create test</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Creating…" : "Create test"}
+            </Button>
           </div>
         </div>
       </form>
@@ -223,8 +241,8 @@ function CreateTestForm({
         onOpenChange={setCategoryDialogOpen}
         groups={groups}
         returnFocusRef={categoryTriggerRef}
-        onCreate={(categoryName) => {
-          setCategoryId(onCreateCategory(categoryName))
+        onCreate={async (categoryName) => {
+          setCategoryId(await onCreateCategory(categoryName))
           setError(null)
         }}
       />

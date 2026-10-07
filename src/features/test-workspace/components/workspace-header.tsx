@@ -10,7 +10,6 @@ type WorkspaceHeaderProps = {
   onWorkspaceChange: (workspaceId: WorkspaceId) => void
   testName: string
   onOpenSettings: () => void
-  mode: "ui" | "api"
   workspaces: Workspace[]
   onCreateWorkspace: () => void
 }
@@ -20,7 +19,6 @@ export function WorkspaceHeader({
   onWorkspaceChange,
   testName,
   onOpenSettings,
-  mode,
   workspaces,
   onCreateWorkspace,
 }: WorkspaceHeaderProps) {
@@ -40,7 +38,6 @@ export function WorkspaceHeader({
           workspaceId={workspaceId}
           onWorkspaceChange={onWorkspaceChange}
           onOpenSettings={onOpenSettings}
-          mode={mode}
           workspaces={workspaces}
           onCreateWorkspace={onCreateWorkspace}
         />

@@ -1,4 +1,5 @@
 import { Plus, Settings } from "lucide-react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -18,7 +19,6 @@ type WorkspaceSwitcherProps = {
   workspaceId: WorkspaceId
   onWorkspaceChange: (workspaceId: WorkspaceId) => void
   onOpenSettings: () => void
-  mode: "ui" | "api"
   workspaces: Workspace[]
   onCreateWorkspace: () => void
 }
@@ -27,18 +27,20 @@ export function WorkspaceSwitcher({
   workspaceId,
   onWorkspaceChange,
   onOpenSettings,
-  mode,
   workspaces,
   onCreateWorkspace,
 }: WorkspaceSwitcherProps) {
+  const [ready, setReady] = useState(false)
+  useEffect(() => setReady(true), [])
   return (
     <div className="relative shrink-0">
       <Select
+        disabled={!ready}
         items={[
           ...workspaces,
           { value: CREATE_WORKSPACE, label: "Create workspace" },
         ]}
-        value={workspaceId}
+        value={workspaceId || null}
         onValueChange={(value) => {
           if (value === CREATE_WORKSPACE) onCreateWorkspace()
           else if (value) onWorkspaceChange(value)
@@ -48,13 +50,10 @@ export function WorkspaceSwitcher({
           aria-label="Switch workspace"
           className="w-[190px] text-xs sm:w-[260px]"
         >
-          <SelectValue className="min-w-0 truncate" />
-          <span
-            className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground"
-            title={mode === "ui" ? "Browser testing" : "API testing"}
-          >
-            {mode.toUpperCase()}
-          </span>
+          <SelectValue
+            className="min-w-0 truncate"
+            placeholder="Create workspace"
+          />
           <span aria-hidden="true" className="w-6 shrink-0" />
         </SelectTrigger>
         <SelectContent align="end" alignItemWithTrigger={false}>
@@ -88,6 +87,7 @@ export function WorkspaceSwitcher({
         className="absolute top-1/2 right-7 -translate-y-1/2 text-muted-foreground"
         onClick={onOpenSettings}
         aria-label="Workspace settings"
+        disabled={!workspaceId}
         title="Workspace settings"
       >
         <Settings />
