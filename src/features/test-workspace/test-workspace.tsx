@@ -24,6 +24,12 @@ import type {
   WorkspaceSnapshot,
 } from "./data"
 
+type AgentTurn = {
+  id: string
+  role: "user" | "assistant" | "error"
+  content: string
+}
+
 export function TestWorkspace({
   initialData,
 }: {
@@ -70,6 +76,32 @@ export function TestWorkspace({
     workspaces.find((workspace) => workspace.value === workspaceId)?.label ??
     "Workspace"
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const transcriptEndRef = useRef<HTMLDivElement>(null)
+  const [turnsByTest, setTurnsByTest] = useState<
+    Partial<Record<string, AgentTurn[]>>
+  >({})
+  const turns = turnsByTest[draftKey] ?? []
+  const [pendingKey, setPendingKey] = useState<string | null>(null)
+  const [agentListening, setAgentListening] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void api
+      .getAgentStatus()
+      .then((result) => {
+        if (!cancelled) setAgentListening(result.data?.listening ?? false)
+      })
+      .catch(() => {
+        if (!cancelled) setAgentListening(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ block: "end" })
+  }, [turns, pendingKey, draftKey])
 
   const [draftErrors, setDraftErrors] = useState<Record<string, string | null>>(
     {}
@@ -106,6 +138,59 @@ export function TestWorkspace({
   }
 
   useEffect(() => () => flushDraft(), [])
+
+  async function sendCommand() {
+    const command = prompt.trim()
+    if (!selectedTestId || !command || pendingKey) return
+    const key = draftKey
+    const targetWorkspaceId = workspaceId
+    const testId = selectedTestId
+    flushDraft()
+    setPendingKey(key)
+    setTurnsByTest((current) => ({
+      ...current,
+      [key]: [
+        ...(current[key] ?? []),
+        { id: crypto.randomUUID(), role: "user", content: command },
+      ],
+    }))
+    try {
+      const result = await api.sendAgentCommand({
+        data: { workspaceId: targetWorkspaceId, testId, command },
+      })
+      setTurnsByTest((current) => ({
+        ...current,
+        [key]: [
+          ...(current[key] ?? []),
+          {
+            id: crypto.randomUUID(),
+            role: result.error ? "error" : "assistant",
+            content:
+              result.error ??
+              result.data?.reply ??
+              "The agent finished without a reply.",
+          },
+        ],
+      }))
+    } catch (error) {
+      setTurnsByTest((current) => ({
+        ...current,
+        [key]: [
+          ...(current[key] ?? []),
+          {
+            id: crypto.randomUUID(),
+            role: "error",
+            content:
+              error instanceof Error
+                ? error.message
+                : "Could not reach the agent.",
+          },
+        ],
+      }))
+    } finally {
+      setPendingKey((current) => (current === key ? null : current))
+    }
+  }
 
   function setPrompt(value: string) {
     if (!selectedTestId) return
@@ -172,6 +257,11 @@ export function TestWorkspace({
       delete next[key]
       return next
     })
+    setTurnsByTest((current) => {
+      const next = { ...current }
+      delete next[key]
+      return next
+    })
     setDeleteTarget(null)
   }
 
@@ -210,6 +300,11 @@ export function TestWorkspace({
       )
     )
     setDraftErrors((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([key]) => !key.startsWith(prefix))
+      )
+    )
+    setTurnsByTest((current) =>
       Object.fromEntries(
         Object.entries(current).filter(([key]) => !key.startsWith(prefix))
       )
@@ -273,6 +368,11 @@ export function TestWorkspace({
         Object.entries(current).filter(([key]) => !deletedKeys.has(key))
       )
     )
+    setTurnsByTest((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([key]) => !deletedKeys.has(key))
+      )
+    )
     setCategoryTarget(null)
   }
 
@@ -312,6 +412,37 @@ export function TestWorkspace({
                 featureName={selectedGroup.name}
               />
             )}
+            {selectedTest && turns.length > 0 && (
+              <div
+                role="log"
+                aria-live="polite"
+                aria-label="Agent replies"
+                className="mx-auto w-full max-w-[760px] space-y-3 px-5 py-6 sm:px-0"
+              >
+                {turns.map((turn) => (
+                  <article
+                    key={turn.id}
+                    className={
+                      turn.role === "user"
+                        ? "rounded-xl border border-border bg-card px-4 py-3 text-sm leading-6"
+                        : turn.role === "error"
+                          ? "rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm leading-6 text-destructive"
+                          : "rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm leading-6 text-muted-foreground"
+                    }
+                  >
+                    <p className="mb-1 text-xs font-medium text-foreground">
+                      {turn.role === "user"
+                        ? "Command"
+                        : turn.role === "error"
+                          ? "Agent error"
+                          : "Agent"}
+                    </p>
+                    <p className="whitespace-pre-wrap">{turn.content}</p>
+                  </article>
+                ))}
+                <div ref={transcriptEndRef} />
+              </div>
+            )}
           </section>
           {selectedTest && (
             <div className="shrink-0 px-5 pb-5 sm:px-10 sm:pb-7">
@@ -330,12 +461,25 @@ export function TestWorkspace({
                   </Button>
                 </div>
               )}
+              <p className="mx-auto mb-2 max-w-[760px] text-xs text-muted-foreground">
+                {pendingKey === draftKey
+                  ? "Agent is working on this command…"
+                  : pendingKey
+                    ? "Agent is working on another command…"
+                    : agentListening
+                      ? "Agent is listening"
+                      : agentListening === false
+                        ? "Agent is unavailable"
+                        : "Starting agent…"}
+              </p>
               <PromptComposer
                 prompt={prompt}
                 onBlur={flushDraft}
                 onPromptChange={setPrompt}
                 inputRef={inputRef}
                 onOpenSettings={() => setSettingsOpen(true)}
+                onSubmit={sendCommand}
+                pending={pendingKey !== null}
               />
             </div>
           )}

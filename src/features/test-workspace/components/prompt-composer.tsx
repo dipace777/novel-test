@@ -9,6 +9,8 @@ type PromptComposerProps = {
   onPromptChange: (prompt: string) => void
   inputRef: RefObject<HTMLTextAreaElement | null>
   onOpenSettings: () => void
+  onSubmit: () => void
+  pending: boolean
 }
 
 export function PromptComposer({
@@ -17,9 +19,17 @@ export function PromptComposer({
   onPromptChange,
   inputRef,
   onOpenSettings,
+  onSubmit,
+  pending,
 }: PromptComposerProps) {
   return (
-    <div className="mx-auto w-full max-w-[760px]">
+    <form
+      className="mx-auto w-full max-w-[760px]"
+      onSubmit={(event) => {
+        event.preventDefault()
+        onSubmit()
+      }}
+    >
       <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-lg shadow-foreground/5 transition-colors focus-within:border-primary/40">
         <label htmlFor="test-prompt" className="sr-only">
           Describe your test
@@ -31,6 +41,12 @@ export function PromptComposer({
           id="test-prompt"
           value={prompt}
           onChange={(event) => onPromptChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault()
+              onSubmit()
+            }
+          }}
           placeholder="Describe UI steps, API calls, or both…"
           rows={3}
           className="block max-h-52 min-h-24 w-full resize-y bg-transparent px-4 pt-4 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
@@ -49,17 +65,18 @@ export function PromptComposer({
               <Settings />
             </Button>
             <Button
+              type="submit"
               size="icon"
-              disabled
-              aria-label="Generate test (coming soon)"
-              title="Test generation is coming soon"
-              className="rounded-lg bg-primary text-primary-foreground disabled:opacity-80"
+              disabled={pending || !prompt.trim()}
+              aria-label={pending ? "Agent is working" : "Send command"}
+              title={pending ? "Agent is working" : "Send command"}
+              className="rounded-lg bg-primary text-primary-foreground"
             >
               <ArrowUp className="size-4" />
             </Button>
           </div>
         </div>
       </div>
-    </div>
+    </form>
   )
 }

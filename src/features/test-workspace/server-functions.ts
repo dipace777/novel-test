@@ -162,6 +162,62 @@ export const deleteTest = createServerFn({ method: "POST" })
     }
   })
 
+function agentFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : "The agent failed."
+  if (message.startsWith("Set XAI_API_KEY")) return message
+  if (
+    /incorrect api key|invalid api key|invalid_api_key|unauthorized|\b401\b/i.test(
+      message
+    )
+  )
+    return "xAI rejected XAI_API_KEY. Create a key at https://console.x.ai and put that value in .env. xAI keys start with xai-."
+  return message.length > 300
+    ? "The agent failed while handling that command."
+    : message
+}
+
+export const getAgentStatus = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const agent = await import("../../server/agent.server")
+    agent.startAgent()
+    return { data: agent.agentStatus(), error: null }
+  }
+)
+
+export const sendAgentCommand = createServerFn({ method: "POST" })
+  .validator(
+    z.object({
+      workspaceId: id,
+      testId: id,
+      command: z
+        .string()
+        .max(50000)
+        .transform((value) => value.trim())
+        .pipe(z.string().min(1)),
+    })
+  )
+  .handler(async ({ data }) => {
+    const repo = await import("../../server/workspace-repository.server")
+    let context: Awaited<ReturnType<typeof repo.loadTestCommandContext>>
+    try {
+      context = await repo.loadTestCommandContext(data.workspaceId, data.testId)
+    } catch (error) {
+      return { data: null, error: repo.publicError(error) }
+    }
+    try {
+      const agent = await import("../../server/agent.server")
+      const reply = await agent.submitCommand({
+        command: data.command,
+        testFolder: context.testFolder,
+        testName: context.testName,
+        globalUrl: context.globalUrl,
+      })
+      return { data: { reply }, error: null }
+    } catch (error) {
+      return { data: null, error: agentFailure(error) }
+    }
+  })
+
 export const savePrompt = createServerFn({ method: "POST" })
   .validator(
     z.object({ workspaceId: id, testId: id, prompt: z.string().max(50000) })

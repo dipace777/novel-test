@@ -1,8 +1,14 @@
 import "@tanstack/react-start/server-only"
+import path from "node:path"
 import { and, asc, desc, eq, sql } from "drizzle-orm"
 import { getDb } from "./db/connection"
 import { categories, testCases, workspaces } from "./db/schema"
-import { TestFiles, TestFilesError, type WorkspaceFolder } from "./test-files"
+import {
+  TestFiles,
+  TestFilesError,
+  testDirectory,
+  type WorkspaceFolder,
+} from "./test-files"
 import type { WorkspaceSnapshot } from "../features/test-workspace/data"
 import type { WorkspaceConfig } from "../features/test-workspace/config"
 import {
@@ -298,6 +304,49 @@ export async function createTest(
     await files.createTest(category, test)
     return test
   })
+}
+
+export async function loadTestCommandContext(
+  workspaceId: string,
+  testId: string
+) {
+  const [row] = await getDb()
+    .select({
+      workspace: workspaces,
+      category: categories,
+      test: testCases,
+    })
+    .from(testCases)
+    .innerJoin(categories, eq(categories.id, testCases.categoryId))
+    .innerJoin(workspaces, eq(workspaces.id, categories.workspaceId))
+    .where(and(eq(testCases.id, testId), eq(workspaces.id, workspaceId)))
+  if (!row)
+    throw new WorkspaceInputError(
+      "This test no longer exists in the workspace."
+    )
+  const directory = await testDirectory(
+    { id: row.workspace.id, name: row.workspace.name },
+    {
+      id: row.category.id,
+      name: row.category.name,
+      workspaceId: row.workspace.id,
+    },
+    { id: row.test.id, name: row.test.name }
+  )
+  const config = normalizeWorkspaceConfig(row.workspace.config)
+  const testFolder = path.relative(path.resolve("."), directory)
+  return {
+    testFolder,
+    testName: row.test.name,
+    globalUrl: config.globalUrl,
+    summary: [
+      `Workspace: ${row.workspace.name}`,
+      `Category: ${row.category.name}`,
+      `Test: ${row.test.name}`,
+      `Test folder: ${testFolder}`,
+      `Global URL: ${config.globalUrl || "(not set)"}`,
+    ].join("\n"),
+  }
 }
 
 export async function savePrompt(
