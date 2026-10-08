@@ -19,6 +19,8 @@
     "db:studio": "drizzle-kit studio",
     "db:setup": "pnpm db:up && pnpm db:migrate",
     "test:workspace": "playwright test --config playwright.workspace.config.ts",
+    "test:files": "node --import tsx --test src/server/test-files.test.ts",
+    "files:migrate": "node --import tsx scripts/migrate-test-files.ts",
     "test:db": "tsx --test src/server/workspace-repository.test.ts"
   },
   "dependencies": {

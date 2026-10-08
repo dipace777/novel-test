@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "workspaceId": "964c94b7-3244-4956-a791-f2989758997a",
+  "categoryId": "48c01bf5-8814-4c6e-8468-4a982f88b371",
+  "id": "c2e214d1-8f07-4c0b-ab44-1167cd9fe672",
+  "name": "User Can Sign In With Valid Email",
+  "description": "",
+  "steps": [],
+  "expectedResult": ""
+}

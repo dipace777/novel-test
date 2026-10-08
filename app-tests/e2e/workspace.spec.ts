@@ -1,7 +1,19 @@
 import { expect, test } from "@playwright/test"
+import { readFile, readdir } from "node:fs/promises"
+import path from "node:path"
 import { eq } from "drizzle-orm"
-import { getDb, closeDb } from "../src/server/db/connection"
-import { workspaces } from "../src/server/db/schema"
+import { getDb, closeDb } from "../../src/server/db/connection"
+import { workspaces } from "../../src/server/db/schema"
+import { deleteWorkspace } from "../../src/server/workspace-repository.server"
+import { testDirectory } from "../../src/server/test-files"
+
+async function removeWorkspace(name: string) {
+  const rows = await getDb()
+    .select({ id: workspaces.id })
+    .from(workspaces)
+    .where(eq(workspaces.name, name))
+  for (const row of rows) await deleteWorkspace(row.id)
+}
 
 test("workspace, category, test, settings and draft survive a reload", async ({
   page,
@@ -21,7 +33,6 @@ test("workspace, category, test, settings and draft survive a reload", async ({
     })
     await drawer.getByLabel("Workspace name").fill(workspaceName)
     await drawer.getByLabel("Global URL").fill("https://api.example.com/v1")
-    await drawer.getByRole("switch", { name: "Test mode" }).click()
     await drawer
       .getByRole("button", { name: "Create workspace", exact: true })
       .click()
@@ -61,6 +72,20 @@ test("workspace, category, test, settings and draft survive a reload", async ({
       .click()
     await expect(testDrawer).toBeHidden()
 
+    const { testCases, categories } = await import("../../src/server/db/schema")
+    const [created] = await getDb()
+      .select({ category: categories, test: testCases })
+      .from(testCases)
+      .innerJoin(categories, eq(categories.id, testCases.categoryId))
+      .innerJoin(workspaces, eq(workspaces.id, categories.workspaceId))
+      .where(eq(workspaces.name, workspaceName))
+    const directory = await testDirectory(
+      { id: created.category.workspaceId, name: workspaceName },
+      created.category,
+      created.test
+    )
+    expect((await readdir(directory)).sort()).toEqual(["test.json"])
+
     await page
       .getByLabel("Describe your test")
       .fill("Verify an expired bearer token returns 401.")
@@ -72,6 +97,7 @@ test("workspace, category, test, settings and draft survive a reload", async ({
       exact: true,
     })
     await settings.getByLabel("Global URL").fill("https://api.example.com/v2")
+    await settings.getByRole("spinbutton", { name: /timeout/i }).fill("15000")
     await settings
       .getByRole("button", { name: "Save settings", exact: true })
       .click()
@@ -79,8 +105,6 @@ test("workspace, category, test, settings and draft survive a reload", async ({
     await expect
       .poll(async () => {
         const db = getDb()
-        const { testCases, categories } =
-          await import("../src/server/db/schema")
         const rows = await db
           .select({ prompt: testCases.prompt })
           .from(testCases)
@@ -90,6 +114,9 @@ test("workspace, category, test, settings and draft survive a reload", async ({
         return rows[0]?.prompt
       })
       .toBe("Verify an expired bearer token returns 401.")
+    await expect(
+      readFile(path.join(directory, "prompt.md"))
+    ).rejects.toMatchObject({ code: "ENOENT" })
 
     await page.reload()
     await page.getByRole("combobox", { name: "Switch workspace" }).click()
@@ -107,11 +134,8 @@ test("workspace, category, test, settings and draft survive a reload", async ({
       "https://api.example.com/v2"
     )
     await expect(
-      settings.getByRole("switch", { name: "Test mode" })
-    ).toBeChecked()
-    await expect(
       settings.getByRole("spinbutton", { name: /timeout/i })
-    ).toHaveValue("30000")
+    ).toHaveValue("15000")
     await settings.getByRole("button", { name: "Cancel", exact: true }).click()
     const testButton = page.getByRole("button", {
       name: "Reject expired tokens",
@@ -155,6 +179,7 @@ test("workspace, category, test, settings and draft survive a reload", async ({
       .getByRole("button", { name: "Delete test", exact: true })
       .click()
     await expect(deletion).toBeHidden()
+    await expect(readdir(directory)).rejects.toMatchObject({ code: "ENOENT" })
     await expect(testButton).toHaveCount(0)
     await expect(page.getByLabel("Describe your test")).toHaveCount(0)
     await expect(
@@ -169,7 +194,7 @@ test("workspace, category, test, settings and draft survive a reload", async ({
     ).toBeVisible()
     expect(browserErrors).toEqual([])
   } finally {
-    await getDb().delete(workspaces).where(eq(workspaces.name, workspaceName))
+    await removeWorkspace(workspaceName)
     await closeDb()
   }
 })
@@ -213,7 +238,7 @@ test("a failed save preserves the form and can be retried", async ({
       page.getByRole("combobox", { name: "Switch workspace" })
     ).toContainText(workspaceName)
   } finally {
-    await getDb().delete(workspaces).where(eq(workspaces.name, workspaceName))
+    await removeWorkspace(workspaceName)
     await closeDb()
   }
 })

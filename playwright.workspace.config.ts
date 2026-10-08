@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test"
 import "dotenv/config"
 
 export default defineConfig({
-  testDir: "./tests",
+  testDir: "./app-tests/e2e",
   testMatch: "workspace.spec.ts",
   fullyParallel: false,
   workers: 1,

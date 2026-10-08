@@ -12,8 +12,9 @@ import { defineConfig, devices } from '@playwright/test';
  * See https://playwright.dev/docs/test-configuration.
  */
 export default defineConfig({
+  // Automation scripts created by the agent belong here.
   testDir: './tests',
-  testIgnore: 'workspace.spec.ts',
+  testIgnore: '**/.novel-trash-*/**',
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
